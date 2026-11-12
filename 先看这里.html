@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ST7735S 通用驱动使用说明</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f5f5;color:#183744;font:16px/1.7 "Segoe UI","Microsoft YaHei",sans-serif}main{max-width:1060px;margin:auto;padding:28px 24px 44px}h1{margin:0 0 8px;font-size:29px}h2{font-size:20px;margin:0 0 12px}h3{font-size:16px;margin:16px 0 5px}p{margin:8px 0}.intro{color:#48616c;margin-bottom:22px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:white;border:1px solid #d7e2e6;border-radius:8px;padding:22px}.wide{grid-column:1/-1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:7px 10px;border-bottom:1px solid #e4ecef;text-align:left}th{background:#eaf2ef}pre,code{font-family:Consolas,"Cascadia Mono",monospace}code{font-size:.9em;background:#edf2f3;padding:2px 4px}pre{background:#183744;color:#f1f7f5;padding:14px;border-radius:5px;line-height:1.65;font-size:13px;overflow:auto}pre code{padding:0;background:none;color:inherit}.note{border-left:4px solid #168377;background:#eaf5ef;padding:11px 14px;margin-top:14px}.muted{font-size:13px;color:#526873}ul,ol{padding-left:23px;margin:8px 0}@media(max-width:780px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}main{padding:20px 14px}h1{font-size:25px}}@media print{body{background:white}main{padding:0}.card{break-inside:avoid}pre{white-space:pre-wrap}}
+</style>
+</head>
+<body><main>
+<h1>ST7735S 通用驱动使用说明</h1>
+<p class="intro">适用于这块 0.96 英寸、80×160 ST7735S 屏幕及 STM32 HAL 工程。直接调用初始化、绘图、文字和数字接口，由你的 main.c 决定显示什么。</p>
+<div class="grid">
+<section class="card"><h2>1. 加入 4 个源文件</h2>
+<pre>Src/lcd.c
+Src/lcd_init.c
+Src/lcd_port.c
+Src/lcd_font.c</pre>
+<p>在 Keil 工程中新建 LCD 分组，将上面4个文件加入编译。</p>
+<p><b>Include Paths 只添加本文件夹的 Inc 目录。</b> Inc 中5个头文件全部保留，编译器会按需包含，不必逐个加入编译。</p>
+<p>旧版 lcd.c、lcd_init.c 取消参与编译；移除旧驱动的包含路径。保留原文件和现有HAL、时钟、GPIO、SPI初始化。</p>
+<p>如果之前按旧说明加入过界面示例，移除对应分组、头文件包含和函数调用，按本页直接接入核心驱动。</p>
+</section>
+<section class="card"><h2>2. 确认接线和配置</h2>
+<table><thead><tr><th>LCD</th><th>当前默认STM32接法</th></tr></thead><tbody>
+<tr><td>GND / VCC</td><td>GND / 3.3V，必须可靠共地</td></tr>
+<tr><td>SCL / SDA</td><td>PA5 / PA7，SPI1 SCK / MOSI</td></tr>
+<tr><td>RES / DC</td><td>PB0 / PB1，推挽输出</td></tr>
+<tr><td>CS</td><td>PA4，SPI1硬件NSS输出</td></tr>
+<tr><td>BLK</td><td>PB10，推挽输出，高电平点亮</td></tr>
+</tbody></table>
+<p>SPI1：主机、8位、MSB first、CPOL低、CPHA第1边沿、NSS硬件输出。驱动不会替你配置GPIO或时钟。</p>
+<p>引脚、SPI句柄、方向统一在 <code>Inc/lcd_config.h</code> 修改，并同步实际CubeMX配置。默认横屏160×80；方向0/1竖屏、2/3横屏。</p>
+</section>
+<section class="card wide"><h2>3. main.c 直接初始化</h2>
+<div class="grid"><div><h3>头文件和可观察状态</h3>
+<pre><code>/* USER CODE BEGIN Includes */
+#include "lcd.h"
+/* USER CODE END Includes */
+
+/* USER CODE BEGIN PV */
+volatile LCD_Status lcd_status;
+/* USER CODE END PV */</code></pre>
+</div><div><h3>放在 MX_GPIO_Init、MX_SPI1_Init 之后</h3>
+<pre><code>/* USER CODE BEGIN 2 */
+lcd_status = LCD_Init();
+if (lcd_status != LCD_OK) {
+    Error_Handler();
+}
+/* USER CODE END 2 */</code></pre>
+</div></div>
+<p>LCD_Init 成功后屏幕清为黑色并开启背光，随后按需要调用下方任意接口。在主循环更新变化的数据，固定文字只需画一次。无需额外的界面文件。</p>
+</section>
+<section class="card wide"><h2>常用接口：按需调用</h2>
+<div class="grid"><div><h3>清屏、画点、画线、矩形和圆</h3>
+<pre><code>LCD_Clear(LCD_COLOR_WHITE);
+
+LCD_DrawPoint(10, 10, LCD_COLOR_RED);
+LCD_DrawLine(0, 30, 159, 30, LCD_COLOR_BLUE);
+
+// x、y、宽、高、颜色
+LCD_FillRect(10, 10, 40, 20, LCD_COLOR_BLUE);
+LCD_DrawRect(0, 0, LCD_WIDTH, LCD_HEIGHT,
+             LCD_COLOR_RED);
+
+// 圆心x、圆心y、半径、颜色
+LCD_DrawCircle(80, 40, 15, LCD_COLOR_GREEN);</code></pre>
+<h3>文字</h3>
+<pre><code>// x、y、字符串、字体、字色、底色
+LCD_DrawText(0, 0, "Hello", LCD_FONT_ASCII24,
+             LCD_COLOR_RED, LCD_COLOR_WHITE);
+
+// 源文件保存为UTF-8；所用汉字需要有字模
+LCD_DrawText(0, 40, "电", LCD_FONT_MIXED32,
+             LCD_COLOR_RED, LCD_COLOR_WHITE);</code></pre>
+</div><div><h3>整数和小数</h3>
+<pre><code>// x、y、区域宽度、整数、字色、底色
+LCD_DrawInt(0, 0, 96, 123,
+            LCD_COLOR_RED, LCD_COLOR_WHITE);
+
+// x、y、区域宽度、数值、小数位、字色、底色
+LCD_DrawNumber(0, 40, 96, -12.345, 3,
+               LCD_COLOR_RED, LCD_COLOR_WHITE);</code></pre>
+<p>数字区域高24像素，右对齐，每次自动清除区域旧内容；整个区域必须在屏幕内。改变数值时重新调用即可。</p>
+<h3>图片、文字尺寸和背光</h3>
+<pre><code>// 图片按行排列，RGB565高字节在前
+// pixels指向至少 w*h*2 字节的图片数据
+LCD_DrawImage(x, y, w, h, pixels, data_size);
+
+uint16_t width, height;
+LCD_MeasureText("Hello", LCD_FONT_ASCII24,
+                &amp;width, &amp;height);
+
+LCD_SetBacklight(0);  // 关闭
+LCD_SetBacklight(1);  // 开启</code></pre>
+</div></div>
+<div class="note">以上是独立的接口调用方式。请自己选择位置和调用时机，不要把所有片段同时叠画在相同坐标。所有显示调用返回 LCD_Status，需要排查时将结果赋给 lcd_status，在 Keil Watch 中观察。</div>
+</section>
+<section class="card"><h2>坐标、字体和数字规则</h2>
+<table><tbody>
+<tr><td>坐标</td><td>原点左上；默认x=0～159、y=0～79</td></tr>
+<tr><td>矩形参数</td><td>x、y、宽、高；不是结束坐标</td></tr>
+<tr><td>ASCII24</td><td>每字符12×24像素</td></tr>
+<tr><td>MIXED32</td><td>汉字32×32；ASCII仍12×24，在32高行中居中</td></tr>
+<tr><td>数字</td><td>支持负数；小数位0～3；数字、负号、小数点各占12像素</td></tr>
+<tr><td>宽度例子</td><td>23.444占72像素；-23.444占84像素</td></tr>
+<tr><td>刷新</td><td>阻塞式直接写屏，不需要额外刷新函数</td></tr>
+</tbody></table>
+<p>只在主循环中顺序调用，不要在中断或多个任务中并发操作。字体为const数据，MCU端没有全屏缓冲。</p>
+</section>
+<section class="card"><h2>返回状态与中文字库</h2>
+<table><tbody>
+<tr><td>LCD_OK</td><td>软件操作完成</td></tr>
+<tr><td>LCD_CLIPPED</td><td>内容超屏；数字区域超屏则不绘制</td></tr>
+<tr><td>LCD_MISSING_GLYPH</td><td>缺少字模，显示占位方框</td></tr>
+<tr><td>LCD_INVALID_UTF8</td><td>字符串编码错误</td></tr>
+<tr><td>LCD_INVALID_ARGUMENT</td><td>尺寸、字体、指针或数值参数无效</td></tr>
+<tr><td>LCD_NOT_INITIALIZED</td><td>先调用LCD_Init</td></tr>
+<tr><td>LCD_IO_ERROR</td><td>HAL发送错误、忙或超时</td></tr>
+<tr><td>LCD_OVERFLOW</td><td>数值太大或区域太窄；能容纳时显示OVER</td></tr>
+</tbody></table>
+<p>当前中文字模仅有“电、流、压”。添加其他汉字时，在 Src/lcd_font.c 的 lcd_chinese_32 数组中增加Unicode码点和128字节点阵；格式为32行、每行4字节、低位在前。UTF-8支持不等于自带全部汉字。</p>
+<p>小数按指定精度四舍五入，临界值受二进制浮点精度影响；NaN/无穷值显示ERR。缩放并舍入后的绝对值上限为UINT32_MAX。</p>
+</section>
+</div>
+<p class="muted">验证范围：核心驱动此前通过离线测试和Armclang6的Cortex-M3对象编译；当前清理只删除界面示例并重写说明，核心代码保持不变。ARMCC5曾因本机系统DLL重定位错误无法启动，未完成完整固件链接、烧录或实物验证。初始化返回OK仅表示HAL未报告错误，不能证明实际接线或屏幕正常。</p>
+</main></body></html>
